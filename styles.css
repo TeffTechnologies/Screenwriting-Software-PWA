@@ -587,3 +587,87 @@ border-radius: 20px;
 border: 1px solid var(--border);
 }
 .istat span { color: var(--accent); font-weight: 600; }
+/* ─── ACCESSIBILITY ENHANCEMENTS ─── */
+
+/* Skip link for keyboard users */
+.skip-link {
+position: absolute; left: -9999px; top: 4px; z-index: 99999;
+background: var(--accent); color: #000; padding: 8px 16px;
+border-radius: 6px; font-weight: 700; font-size: 14px;
+text-decoration: none; white-space: nowrap;
+}
+.skip-link:focus { left: 12px; outline: 3px solid #000; outline-offset: 2px; }
+
+/* High-visibility focus rings — never hidden */
+*:focus-visible {
+outline: 3px solid var(--accent) !important;
+outline-offset: 2px !important;
+box-shadow: 0 0 0 5px rgba(245,200,66,0.3) !important;
+}
+.script-line:focus-visible {
+outline: 3px solid #2563eb !important;
+outline-offset: 1px !important;
+box-shadow: 0 0 0 5px rgba(37,99,235,0.25) !important;
+}
+/* Remove broken outline:none on inputs */
+#title-input:focus { outline: 3px solid var(--accent) !important; border-color: var(--accent); }
+.modal-field input:focus, .modal-field textarea:focus, .find-row input:focus {
+outline: 3px solid var(--accent) !important; border-color: var(--accent) !important;
+}
+#notes-area:focus { outline: 3px solid var(--accent) !important; }
+
+/* Minimum touch targets */
+.tb-btn { min-height: 36px; }
+.el-btn { min-height: 32px; }
+.stab { min-height: 36px; }
+.modal-btn { min-height: 40px; min-width: 80px; }
+.scene-item { min-height: 32px; display: flex; align-items: center; }
+
+/* Stronger focused-line indicator */
+.script-line.focused-line { background: rgba(37,99,235,0.07); border-left: 3px solid #2563eb; padding-left: 3px; }
+.script-line[data-type="scene-heading"].focused-line { background: rgba(245,200,66,0.1); border-left: 3px solid var(--accent); }
+
+/* Current element type badge in status bar */
+#current-type-badge {
+background: rgba(245,200,66,0.15); color: var(--accent);
+border: 1px solid rgba(245,200,66,0.35);
+border-radius: 4px; padding: 1px 8px;
+font-weight: 600; font-size: 11px; letter-spacing: 0.3px;
+}
+
+/* Font-size controls */
+#a11y-controls { display: flex; align-items: center; gap: 3px; }
+#a11y-controls button {
+background: var(--surface2); border: 1px solid var(--border); color: var(--text);
+border-radius: 5px; width: 26px; height: 26px; font-size: 13px;
+cursor: pointer; display: flex; align-items: center; justify-content: center; padding: 0;
+}
+#a11y-controls button:hover { background: var(--accent); color: #000; border-color: var(--accent); }
+#font-size-label { font-size: 11px; color: var(--text-dim); min-width: 30px; text-align: center; }
+
+/* High-contrast mode support */
+@media (forced-colors: active) {
+.tb-btn, .el-btn, .modal-btn { border: 2px solid ButtonText !important; }
+.tb-btn.active, .el-btn.active { forced-color-adjust: none; background: Highlight !important; color: HighlightText !important; }
+.script-line { forced-color-adjust: none; }
+.script-line.focused-line { border-left: 3px solid Highlight !important; background: transparent !important; }
+}
+
+/* Reduced motion */
+@media (prefers-reduced-motion: reduce) {
+*, *::before, *::after { transition: none !important; animation: none !important; }
+.spinner { animation: none !important; }
+}
+
+/* Prefer-contrast: more — boost contrast */
+@media (prefers-contrast: more) {
+:root { --text-dim: #aaaacc; --border: #666680; }
+.light-mode { --text-dim: #444466; --border: #888899; }
+}
+
+/* Screen-reader-only utility */
+.sr-only {
+position: absolute; width: 1px; height: 1px; padding: 0;
+margin: -1px; overflow: hidden; clip: rect(0,0,0,0);
+white-space: nowrap; border: 0;
+}

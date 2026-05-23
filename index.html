@@ -1,0 +1,204 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Don't Pay for Screenwriting Software — Accessible Edition</title>
+<link href="https://fonts.googleapis.com/css2?family=Courier+Prime:ital,wght@0,400;0,700;1,400&family=DM+Sans:wght@300;400;500;600&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/mammoth/1.6.0/mammoth.browser.min.js"></script>
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+<a class="skip-link" href="#editor-wrapper">Skip to editor</a>
+<div id="sr-live" aria-live="polite" aria-atomic="true" style="position:absolute;left:-9999px;width:1px;height:1px;overflow:hidden;"></div>
+
+<!-- TOOLBAR -->
+<div id="toolbar" role="toolbar" aria-label="Main toolbar">
+  <div id="logo" aria-label="Don't Pay for Screenwriting Software by Inwood Park Productions & Teff Technologies">Don't Pay for Screenwriting Software.<span style="display:block;font-size:9px;font-weight:400;color:var(--text-dim);letter-spacing:0.3px;margin-top:1px;" aria-hidden="true">made by Inwood Park Productions</span></div>
+  <div class="tb-sep" role="separator" aria-hidden="true"></div>
+  <button class="tb-btn" onclick="newScript()" aria-label="New script (Ctrl+N)" aria-keyshortcuts="Control+N">New</button>
+  <button class="tb-btn" onclick="saveToFile()" aria-label="Save script to file (Ctrl+S)" aria-keyshortcuts="Control+S">Save</button>
+  <button class="tb-btn" onclick="loadFromFile()" aria-label="Open script from file">Open</button>
+  <button class="tb-btn" style="color:var(--accent);border-color:rgba(245,200,66,0.3)" onclick="openImportModal()" aria-label="Import script from PDF or DOCX file">⬆ Import PDF/DOCX</button>
+  <input type="file" id="file-input" accept=".sfx,.txt,.fountain,.fdx" style="display:none" onchange="handleFileLoad(event)" aria-label="Choose script file">
+  <div class="tb-sep" role="separator" aria-hidden="true"></div>
+  <button class="tb-btn" onclick="openTitlePageModal()" aria-label="Edit title page">Title Page</button>
+  <button class="tb-btn" onclick="toggleFindBar()" aria-label="Open find and replace panel (Ctrl+F)" aria-keyshortcuts="Control+F">Find/Replace</button>
+  <div class="tb-sep" role="separator" aria-hidden="true"></div>
+  <label class="sr-only" for="title-input">Script title</label>
+  <input type="text" id="title-input" placeholder="Untitled Screenplay" value="Untitled Screenplay" oninput="markUnsaved()" aria-label="Script title">
+  <div class="tb-sep" role="separator" aria-hidden="true"></div>
+  <button class="tb-btn" onclick="exportPDF()" aria-label="Export script as PDF file">Export PDF</button>
+  <button class="tb-btn" onclick="exportFountain()" aria-label="Export script as Fountain plain-text format">Export .fountain</button>
+  <button class="tb-btn" onclick="exportFDX()" aria-label="Export script as Final Draft FDX format">Export .fdx</button>
+  <div class="tb-sep" role="separator" aria-hidden="true"></div>
+  <div id="a11y-controls" role="group" aria-label="Font size controls">
+    <button onclick="changeEditorFontSize(-1)" aria-label="Decrease editor font size">A−</button>
+    <span id="font-size-label" aria-live="polite" aria-label="Current font size">12pt</span>
+    <button onclick="changeEditorFontSize(1)" aria-label="Increase editor font size">A+</button>
+  </div>
+  <div class="tb-sep" role="separator" aria-hidden="true"></div>
+  <button class="tb-btn" onclick="toggleSidebar()" aria-label="Toggle navigation panels" id="sidebar-toggle-btn" aria-expanded="true">☰ Panels</button>
+  <button class="tb-btn" onclick="toggleDark()" aria-label="Toggle light and dark theme">◑ Theme</button>
+</div>
+
+<!-- ELEMENT BAR -->
+<div id="element-bar" role="toolbar" aria-label="Element type selector — Tab to cycle, or click to choose">
+  <span style="font-size:11px;color:var(--text-dim);margin-right:4px;" aria-hidden="true">Element:</span>
+  <button class="el-btn" data-type="scene-heading" onclick="setElementType('scene-heading')" aria-pressed="false" aria-label="Scene Heading — INT/EXT location">Scene Heading</button>
+  <button class="el-btn" data-type="action" onclick="setElementType('action')" aria-pressed="false" aria-label="Action — description and stage direction">Action</button>
+  <button class="el-btn active" data-type="character" onclick="setElementType('character')" aria-pressed="true" aria-label="Character name">Character</button>
+  <button class="el-btn" data-type="parenthetical" onclick="setElementType('parenthetical')" aria-pressed="false" aria-label="Parenthetical — acting note in parentheses">Parenthetical</button>
+  <button class="el-btn" data-type="dialogue" onclick="setElementType('dialogue')" aria-pressed="false" aria-label="Dialogue — spoken words">Dialogue</button>
+  <button class="el-btn" data-type="transition" onclick="setElementType('transition')" aria-pressed="false" aria-label="Transition — e.g. CUT TO">Transition</button>
+  <button class="el-btn" data-type="centered" onclick="setElementType('centered')" aria-pressed="false" aria-label="Centered text">Centered</button>
+  <span id="element-label" aria-hidden="true">Tab: cycle element type &nbsp;|&nbsp; Enter: next line</span>
+</div>
+
+<!-- MAIN -->
+<div id="main">
+  <!-- SIDEBAR -->
+  <nav id="sidebar" aria-label="Script outline and notes">
+    <div id="sidebar-tabs" role="tablist">
+      <div class="stab active" role="tab" tabindex="0" aria-selected="true" aria-controls="tab-scenes" onclick="switchSidebarTab('scenes',this)" onkeydown="handleTabKey(event,this)">Scenes</div>
+      <div class="stab" role="tab" tabindex="-1" aria-selected="false" aria-controls="tab-characters" onclick="switchSidebarTab('characters',this)" onkeydown="handleTabKey(event,this)">Characters</div>
+      <div class="stab" role="tab" tabindex="-1" aria-selected="false" aria-controls="tab-notes" onclick="switchSidebarTab('notes',this)" onkeydown="handleTabKey(event,this)">Notes</div>
+    </div>
+    <div id="sidebar-content">
+      <div id="tab-scenes" role="tabpanel" aria-label="Scene list"></div>
+      <div id="tab-characters" role="tabpanel" aria-label="Character list" style="display:none"></div>
+      <div id="tab-notes" role="tabpanel" aria-label="Production notes" style="display:none">
+        <textarea id="notes-area" placeholder="Production notes, story ideas, reminders..." aria-label="Production notes"></textarea>
+      </div>
+    </div>
+  </nav>
+
+  <!-- EDITOR -->
+  <div id="editor-wrapper" tabindex="-1">
+    <div id="page-container">
+      <div class="page" id="page-1" role="region" aria-label="Script page 1">
+        <div class="page-number" aria-hidden="true">1.</div>
+        <!-- lines inserted here -->
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- STATUS BAR -->
+<div id="statusbar" role="status" aria-live="off">
+  <span id="save-indicator" class="saved" aria-live="polite">● Saved</span>
+  <span id="stat-pages" aria-label="Estimated page count">Pages: 1</span>
+  <span id="stat-scenes" aria-label="Scene count">Scenes: 0</span>
+  <span id="stat-words" aria-label="Word count">Words: 0</span>
+  <span id="stat-chars" aria-label="Unique character count">Characters: 0</span>
+  <span id="current-type-badge" aria-live="polite" aria-label="Current line element type">Scene Heading</span>
+  <span style="margin-left:auto;font-size:10px;" aria-hidden="true">Don't Pay for Screenwriting Software. &nbsp;|&nbsp; v2-accessible &nbsp;|&nbsp; Autosave on</span>
+</div>
+
+<!-- AUTOCOMPLETE -->
+<div id="autocomplete" role="listbox" aria-label="Autocomplete suggestions" aria-hidden="true"></div>
+
+<!-- FIND/REPLACE -->
+<div id="find-bar" role="search" aria-label="Find and replace">
+  <div class="find-row">
+    <label class="find-label" for="find-input">Find</label>
+    <input type="search" id="find-input" placeholder="Search..." aria-label="Search text" autocomplete="off">
+    <button onclick="findNext()" aria-label="Find next match (Enter)">↓</button>
+    <button onclick="findPrev()" aria-label="Find previous match">↑</button>
+    <button onclick="closeFindBar()" style="color:#ff6b6b;" aria-label="Close find and replace">✕</button>
+  </div>
+  <div class="find-row">
+    <label class="find-label" for="replace-input">Replace</label>
+    <input type="text" id="replace-input" placeholder="Replace with..." aria-label="Replacement text" autocomplete="off">
+    <button onclick="replaceOne()" aria-label="Replace current match">Replace</button>
+    <button onclick="replaceAll()" aria-label="Replace all matches">All</button>
+  </div>
+  <div style="font-size:10px;color:var(--text-dim)" id="find-status" role="status" aria-live="polite"></div>
+</div>
+
+<!-- TITLE PAGE MODAL -->
+<div id="modal-overlay" role="dialog" aria-modal="true" aria-labelledby="modal-title">
+  <div id="modal">
+    <h2 id="modal-title">Title Page</h2>
+    <div class="modal-field">
+      <label for="tp-title">Title</label>
+      <input type="text" id="tp-title" placeholder="MY SCREENPLAY" aria-required="true">
+    </div>
+    <div class="modal-field">
+      <label for="tp-author">Written by</label>
+      <input type="text" id="tp-author" placeholder="Your Name">
+    </div>
+    <div class="modal-field">
+      <label for="tp-based">Based on (optional)</label>
+      <input type="text" id="tp-based" placeholder="e.g. Based on a true story">
+    </div>
+    <div class="modal-field">
+      <label for="tp-contact">Contact / Draft Info</label>
+      <input type="text" id="tp-contact" placeholder="email@example.com · First Draft · 2025">
+    </div>
+    <div class="modal-btns">
+      <button class="modal-btn" onclick="closeTitlePageModal()">Cancel</button>
+      <button class="modal-btn primary" onclick="insertTitlePage()">Insert Title Page</button>
+    </div>
+  </div>
+</div>
+
+<!-- IMPORT MODAL -->
+<div id="import-overlay" role="dialog" aria-modal="true" aria-labelledby="import-modal-title">
+  <div id="import-modal">
+    <div id="import-header">
+      <h2 id="import-modal-title">⬆ Import Script — PDF or DOCX</h2>
+      <button id="import-close" onclick="closeImportModal()">✕</button>
+    </div>
+    <div id="import-body">
+
+      <!-- Drop zone -->
+      <div id="drop-zone" ondragover="dzDragOver(event)" ondragleave="dzDragLeave(event)" ondrop="dzDrop(event)">
+        <input type="file" id="import-file-input" accept=".pdf,.docx,.doc,.txt,.fountain,.fdx" onchange="handleImportFile(event)">
+        <div class="dz-icon">📄</div>
+        <div class="dz-title">Drop your script here</div>
+        <div class="dz-sub">PDF, DOCX, FDX, TXT, or .fountain &nbsp;·&nbsp; Click to browse</div>
+      </div>
+
+      <!-- Progress steps -->
+      <div id="import-progress">
+        <div class="progress-step" id="step-extract">
+          <span class="step-icon">○</span>
+          <span>Extracting text from file</span>
+        </div>
+        <div class="progress-step" id="step-analyze">
+          <span class="step-icon">○</span>
+          <span>Analyzing document structure &amp; formatting</span>
+        </div>
+        <div class="progress-step" id="step-reformat">
+          <span class="step-icon">○</span>
+          <span>Smart reformatting to screenplay standard</span>
+        </div>
+        <div class="progress-step" id="step-load">
+          <span class="step-icon">○</span>
+          <span>Loading into editor</span>
+        </div>
+      </div>
+
+      <!-- Preview -->
+      <div id="import-preview">
+        <h3>Preview (first 30 elements)</h3>
+        <div id="preview-box"></div>
+        <div id="import-stats"></div>
+      </div>
+
+    </div>
+    <div id="import-footer">
+      <span id="import-footer-msg" style="font-size:11px;color:var(--text-dim);margin-right:auto;"></span>
+      <button class="modal-btn" onclick="closeImportModal()">Cancel</button>
+      <button class="modal-btn primary" id="import-apply-btn" onclick="applyImport()" style="display:none">Apply to Editor</button>
+    </div>
+  </div>
+</div>
+
+<script src="importEngine.js"></script>
+<script src="functions.js"></script>
+
+</body>
+</html>

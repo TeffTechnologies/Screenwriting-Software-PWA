@@ -1,0 +1,25 @@
+{
+  "short_name": "Screenwriter",
+  "name": "Screenwriting Software PWA",
+  "description": "A completely free, privacy-focused, and distraction-free screenwriting application that works entirely offline.",
+  "icons": [
+    {
+      "src": "icons/icon-256.png",
+      "type": "image/png",
+      "sizes": "256x256",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "icons/icon-512.png",
+      "type": "image/png",
+      "sizes": "512x512",
+      "purpose": "any maskable"
+    }
+  ],
+  "start_url": "./index.html",
+  "background_color": "#ffffff",
+  "theme_color": "#111111",
+  "display": "standalone",
+  "orientation": "portrait-primary",
+  "categories": ["productivity", "utilities"]
+}

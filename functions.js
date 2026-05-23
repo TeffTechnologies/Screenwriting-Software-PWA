@@ -70,6 +70,14 @@ function createLineEl(type, text) {
   el.contentEditable = 'true';
   el.spellcheck = true;
   el.innerText = text || '';
+  // Accessibility
+  el.setAttribute('role', 'textbox');
+  el.setAttribute('aria-multiline', 'false');
+  el.setAttribute('aria-label', (ELEMENT_LABELS[type] || type) + ' line. Press Tab to change element type.');
+  // Apply current font size preference
+  if (typeof editorFontSize !== 'undefined' && editorFontSize !== 12) {
+    el.style.fontSize = editorFontSize + 'pt';
+  }
 
   el.addEventListener('keydown', onLineKeydown);
   el.addEventListener('input', onLineInput);
@@ -172,19 +180,54 @@ function onLineKeydown(e) {
     return;
   }
 
-  // Backspace on empty line: remove it
-  if (e.key === 'Backspace' && el.innerText === '') {
-    e.preventDefault();
+  // Backspace: remove empty line OR merge with previous line when at start
+  if (e.key === 'Backspace') {
     const idx = lines.findIndex(l => l.el === el);
-    if (idx > 0) {
+    const isEmpty = el.innerText === '';
+
+    // Check if cursor is at the very beginning of the line
+    const sel = window.getSelection();
+    const atStart = sel && sel.rangeCount > 0 && sel.getRangeAt(0).startOffset === 0 &&
+      sel.getRangeAt(0).collapsed &&
+      (sel.getRangeAt(0).startContainer === el ||
+       (sel.getRangeAt(0).startContainer === el.firstChild && sel.getRangeAt(0).startOffset === 0));
+
+    if ((isEmpty || atStart) && idx > 0) {
+      e.preventDefault();
       const prev = lines[idx - 1].el;
-      removeLine(el);
-      placeCursorAtEnd(prev);
+      if (isEmpty) {
+        // Empty line: just remove it and focus previous
+        removeLine(el);
+        placeCursorAtEnd(prev);
+      } else {
+        // Non-empty line at cursor start: merge text into previous line
+        const currentText = el.innerText;
+        const prevText = prev.innerText;
+        // Place cursor at the join point in the previous line
+        prev.innerText = prevText + currentText;
+        // Remove current line
+        lines.splice(idx, 1);
+        el.remove();
+        // Place cursor at the join point
+        const range = document.createRange();
+        const selObj = window.getSelection();
+        const textNode = prev.firstChild || prev;
+        const offset = Math.min(prevText.length, textNode.nodeType === Node.TEXT_NODE ? textNode.length : 0);
+        try {
+          range.setStart(textNode, offset);
+          range.collapse(true);
+          selObj.removeAllRanges();
+          selObj.addRange(range);
+        } catch(err) {
+          placeCursorAtEnd(prev);
+        }
+        prev.focus();
+      }
+      updateStats();
+      updateSidebar();
+      markUnsaved();
+      return;
     }
-    updateStats();
-    updateSidebar();
-    markUnsaved();
-    return;
   }
 
   // Arrow up/down navigation
@@ -252,6 +295,7 @@ function onLineFocus(e) {
   el.classList.add('focused-line');
   currentType = el.dataset.type;
   updateElementBar();
+  updateCurrentTypeBadge();
 }
 
 function onLineBlur(e) {
@@ -277,7 +321,9 @@ function changeLineType(el, type) {
   const idx = lines.findIndex(l => l.el === el);
   if (idx >= 0) lines[idx].type = type;
   currentType = type;
+  el.setAttribute('aria-label', (ELEMENT_LABELS[type] || type) + ' line. Press Tab to change element type.');
   updateElementBar();
+  updateCurrentTypeBadge();
 }
 
 function setElementType(type) {
@@ -291,7 +337,9 @@ function setElementType(type) {
 
 function updateElementBar() {
   document.querySelectorAll('.el-btn').forEach(btn => {
-    btn.classList.toggle('active', btn.dataset.type === currentType);
+    const active = btn.dataset.type === currentType;
+    btn.classList.toggle('active', active);
+    btn.setAttribute('aria-pressed', active ? 'true' : 'false');
   });
 }
 
@@ -362,8 +410,14 @@ function hideAutocomplete() {
 // SIDEBAR
 // ═══════════════════════════════════════════════════════
 function switchSidebarTab(tab, btn) {
-  document.querySelectorAll('.stab').forEach(t => t.classList.remove('active'));
+  document.querySelectorAll('.stab').forEach(t => {
+    t.classList.remove('active');
+    t.setAttribute('aria-selected', 'false');
+    t.setAttribute('tabindex', '-1');
+  });
   btn.classList.add('active');
+  btn.setAttribute('aria-selected', 'true');
+  btn.setAttribute('tabindex', '0');
   ['scenes','characters','notes'].forEach(t => {
     document.getElementById('tab-' + t).style.display = t === tab ? '' : 'none';
   });
@@ -414,7 +468,11 @@ function scrollToLine(el) {
 }
 
 function toggleSidebar() {
-  document.getElementById('sidebar').classList.toggle('collapsed');
+  const sidebar = document.getElementById('sidebar');
+  const btn = document.getElementById('sidebar-toggle-btn');
+  sidebar.classList.toggle('collapsed');
+  const isCollapsed = sidebar.classList.contains('collapsed');
+  if (btn) btn.setAttribute('aria-expanded', isCollapsed ? 'false' : 'true');
 }
 
 // ═══════════════════════════════════════════════════════
@@ -782,10 +840,138 @@ function fdxEsc(str) {
 }
 
 // ═══════════════════════════════════════════════════════
-// PDF EXPORT
+// PDF EXPORT — full script via jsPDF
 // ═══════════════════════════════════════════════════════
-function exportPDF() {
-  window.print();
+async function exportPDF() {
+  // Dynamically load jsPDF if not already present
+  if (typeof window.jspdf === 'undefined' && typeof window.jsPDF === 'undefined') {
+    await new Promise((resolve, reject) => {
+      const s = document.createElement('script');
+      s.src = 'https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js';
+      s.onload = resolve;
+      s.onerror = reject;
+      document.head.appendChild(s);
+    });
+  }
+  const { jsPDF } = window.jspdf || window;
+
+  const doc = new jsPDF({ unit: 'pt', format: 'letter', orientation: 'portrait' });
+
+  // Page dimensions (letter: 612 x 792 pt)
+  const pageW = 612, pageH = 792;
+  const marginTop = 72, marginBottom = 72, marginLeft = 108, marginRight = 72;
+  const contentW = pageW - marginLeft - marginRight;
+  const fontSize = 12;
+  const lineH = 14;
+
+  const indent = {
+    'scene-heading':  0,
+    'action':         0,
+    'character':      216,
+    'parenthetical':  144,
+    'dialogue':       108,
+    'transition':     0,
+    'centered':       0,
+  };
+  const rightLimit = {
+    'dialogue':       contentW - 72,
+    'parenthetical':  contentW - 72,
+  };
+
+  let y = marginTop + 24;
+  let pageNum = 1;
+
+  function drawPageNum(n) {
+    doc.setFont('Courier', 'normal');
+    doc.setFontSize(fontSize);
+    doc.text(n + '.', pageW - marginRight, marginTop - 12, { align: 'right' });
+  }
+
+  function spaceBefore(type) {
+    if (type === 'scene-heading') return lineH * 2;
+    if (type === 'action') return lineH;
+    if (type === 'character') return lineH;
+    if (type === 'transition') return lineH;
+    return 0;
+  }
+
+  drawPageNum(pageNum);
+
+  // Title page
+  if (titlePageData && titlePageData.title) {
+    doc.setFont('Courier', 'bold');
+    doc.setFontSize(fontSize);
+    const ty = pageH / 2 - 40;
+    doc.text(titlePageData.title.toUpperCase(), pageW / 2, ty, { align: 'center' });
+    if (titlePageData.author) {
+      doc.setFont('Courier', 'normal');
+      doc.text('Written by', pageW / 2, ty + lineH * 2, { align: 'center' });
+      doc.text(titlePageData.author, pageW / 2, ty + lineH * 3, { align: 'center' });
+    }
+    if (titlePageData.based) {
+      doc.setFont('Courier', 'normal');
+      doc.text(titlePageData.based, pageW / 2, ty + lineH * 5, { align: 'center' });
+    }
+    if (titlePageData.contact) {
+      doc.setFont('Courier', 'normal');
+      doc.text(titlePageData.contact, marginLeft, pageH - marginBottom);
+    }
+    doc.addPage();
+    pageNum++;
+    y = marginTop + 24;
+    drawPageNum(pageNum);
+  }
+
+  lines.forEach(l => {
+    const type = l.type;
+    const rawText = l.el.innerText.trim();
+    if (!rawText) return;
+
+    const displayText = (type === 'scene-heading' || type === 'character' || type === 'transition')
+      ? rawText.toUpperCase() : rawText;
+
+    if (type === 'scene-heading' || type === 'character') {
+      doc.setFont('Courier', 'bold');
+    } else {
+      doc.setFont('Courier', 'normal');
+    }
+    doc.setFontSize(fontSize);
+
+    y += spaceBefore(type);
+
+    const elIndent = indent[type] || 0;
+    const maxW = (rightLimit[type] || contentW) - elIndent;
+    const x = marginLeft + elIndent;
+
+    const textLines = doc.splitTextToSize(displayText, maxW);
+
+    textLines.forEach(tl => {
+      if (y + lineH > pageH - marginBottom) {
+        doc.addPage();
+        pageNum++;
+        y = marginTop + 24;
+        drawPageNum(pageNum);
+        if (type === 'scene-heading' || type === 'character') {
+          doc.setFont('Courier', 'bold');
+        } else {
+          doc.setFont('Courier', 'normal');
+        }
+        doc.setFontSize(fontSize);
+      }
+
+      if (type === 'transition') {
+        doc.text(tl, pageW - marginRight, y, { align: 'right' });
+      } else if (type === 'centered') {
+        doc.text(tl, pageW / 2, y, { align: 'center' });
+      } else {
+        doc.text(tl, x, y);
+      }
+      y += lineH;
+    });
+  });
+
+  const title = document.getElementById('title-input').value || 'screenplay';
+  doc.save(title.replace(/\s+/g,'_') + '.pdf');
 }
 
 // ═══════════════════════════════════════════════════════
@@ -938,7 +1124,112 @@ function placeCursorAtEnd(el) {
   sel.addRange(range);
 }
 
-// Print styles
+// ═══════════════════════════════════════════════════════
+// ACCESSIBILITY HELPERS
+// ═══════════════════════════════════════════════════════
+
+// Announce message to screen readers via aria-live region
+function srAnnounce(msg) {
+  const el = document.getElementById('sr-live');
+  if (!el) return;
+  el.textContent = '';
+  setTimeout(() => { el.textContent = msg; }, 50);
+}
+
+// Update the status bar element type badge
+function updateCurrentTypeBadge() {
+  const badge = document.getElementById('current-type-badge');
+  if (badge) badge.textContent = ELEMENT_LABELS[currentType] || currentType;
+}
+
+// Adjustable editor font size (persisted in localStorage)
+let editorFontSize = 12;
+function changeEditorFontSize(delta) {
+  editorFontSize = Math.max(10, Math.min(24, editorFontSize + delta));
+  document.querySelectorAll('.script-line').forEach(el => {
+    el.style.fontSize = editorFontSize + 'pt';
+  });
+  const label = document.getElementById('font-size-label');
+  if (label) label.textContent = editorFontSize + 'pt';
+  try { localStorage.setItem('scriptforge_fontsize', editorFontSize); } catch(e) {}
+  srAnnounce('Font size changed to ' + editorFontSize + ' points');
+}
+
+// Keyboard navigation for sidebar tabs (arrow keys per ARIA tabs pattern)
+function handleTabKey(e, btn) {
+  const tabs = Array.from(document.querySelectorAll('.stab'));
+  const idx = tabs.indexOf(btn);
+  if (e.key === 'ArrowRight') {
+    e.preventDefault();
+    const next = tabs[(idx + 1) % tabs.length];
+    next.focus(); next.click();
+  } else if (e.key === 'ArrowLeft') {
+    e.preventDefault();
+    const prev = tabs[(idx - 1 + tabs.length) % tabs.length];
+    prev.focus(); prev.click();
+  } else if (e.key === 'Enter' || e.key === ' ') {
+    e.preventDefault();
+    btn.click();
+  }
+}
+
+// Restore font size on load
+document.addEventListener('DOMContentLoaded', () => {
+  try {
+    const saved = localStorage.getItem('scriptforge_fontsize');
+    if (saved) { editorFontSize = parseInt(saved) || 12; }
+  } catch(e) {}
+  const label = document.getElementById('font-size-label');
+  if (label) label.textContent = editorFontSize + 'pt';
+});
+
+// Patch insertLineAfter / addLine so new lines also get font size applied
+const _origAddLine = addLine;
+// Override createLineEl to apply current font size to new lines
+const _createLineElOrig = createLineEl;
+
+// Wrap scene-item clicks to make keyboard accessible too
+function updateSidebarA11y() {
+  document.querySelectorAll('.scene-item').forEach(item => {
+    if (!item.getAttribute('tabindex')) {
+      item.setAttribute('tabindex', '0');
+      item.setAttribute('role', 'button');
+      item.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); item.click(); }
+      });
+    }
+  });
+}
+
+// Patch updateSidebar to also run a11y fixup
+const _origUpdateSidebar = updateSidebar;
+function updateSidebar() {
+  _origUpdateSidebar();
+  updateSidebarA11y();
+}
+
+// Patch openTitlePageModal to trap focus inside dialog
+function openTitlePageModal() {
+  if (titlePageData) {
+    document.getElementById('tp-title').value = titlePageData.title || '';
+    document.getElementById('tp-author').value = titlePageData.author || '';
+    document.getElementById('tp-based').value = titlePageData.based || '';
+    document.getElementById('tp-contact').value = titlePageData.contact || '';
+  } else {
+    document.getElementById('tp-title').value = document.getElementById('title-input').value || '';
+  }
+  document.getElementById('modal-overlay').classList.add('open');
+  setTimeout(() => document.getElementById('tp-title').focus(), 50);
+}
+
+// Escape key closes modals
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape') {
+    if (document.getElementById('modal-overlay').classList.contains('open')) closeTitlePageModal();
+    if (document.getElementById('import-overlay').classList.contains('open')) closeImportModal();
+  }
+});
+
 const printStyle = document.createElement('style');
 printStyle.textContent = `
 @media print {
