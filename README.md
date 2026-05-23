@@ -6,8 +6,8 @@ Now upgraded into a **Progressive Web App (PWA)**, you can install it directly o
 
 ## 🚀 Live Demo
 
-Experience the app live on GitHub Pages:
-👉 **[Insert Your Live GitHub Pages URL Here, e.g., https://tefftechnologies.github.io/Screenwriting-Software-PWA]**
+Experience the app live on here:
+👉 **[Screenwriting Software](https://tefftechnologies.github.io/Screenwriting-Software-PWA)**
 
 ---
 
